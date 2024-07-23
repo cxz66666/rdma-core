@@ -1,0 +1,17 @@
+{
+  "editor.formatOnSave": false,
+  "files.associations": {
+    "ostream": "cpp",
+    "iostream": "cpp",
+    "string.h": "c",
+    "stdio.h": "c",
+    "ctype.h": "c",
+    "stdlib.h": "c",
+    "type_traits": "c",
+    "xtr1common": "c",
+    "*.m": "matlab",
+    "minmax.h": "c",
+    "udma_barrier.h": "c",
+    "string_view": "c"
+  }
+}
