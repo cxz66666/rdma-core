@@ -501,6 +501,10 @@ struct mlx5dv_qp_ex {
 	void (*wr_memcpy_direct)(struct mlx5dv_qp_ex *mqp_ex,
 		uint32_t dest_lkey, uint64_t dest_addr,
 		uint32_t src_lkey, uint64_t src_addr, size_t length);
+	void (*wr_invcache_direct_init)(struct mlx5dv_qp_ex *mqp_ex);
+	void (*wr_invcache_direct)(struct mlx5dv_qp_ex *mqp_ex,
+		uint32_t lkey, uint64_t addr, size_t length,
+		bool need_writeback);
 };
 
 struct mlx5dv_qp_ex *mlx5dv_qp_ex_from_ibv_qp_ex(struct ibv_qp_ex *qp);

@@ -3569,6 +3569,93 @@ static inline void mlx5_wr_invcache(struct mlx5dv_qp_ex *mqp_ex,
 	_common_wqe_finalize(mqp);
 }
 
+static inline void mlx5_wr_invcache_direct_init(struct mlx5dv_qp_ex *mqp_ex) 
+{
+	struct mlx5_qp *mqp = mqp_from_mlx5dv_qp_ex(mqp_ex);
+	struct mlx5_pd *mpd = to_mpd(mqp->ibv_qp->pd);
+
+	mqp->cur_post_rb = mqp->sq.cur_post;
+	mqp->fm_cache_rb = mqp->fm_cache;
+	mqp->err = 0;
+	mqp->nreq = 0;
+	mqp->inl_wqe = 0;
+
+	for (uint32_t idx = 0; idx < mqp->sq.wqe_cnt; idx++) {
+		struct mlx5_wqe_ctrl_seg *ctrl = mlx5_get_send_wqe(mqp, idx);
+		*(uint32_t *)((void *)ctrl + 8) = 0;
+		ctrl->fm_ce_se = mqp->sq_signal_bits | mqp->fm_cache | MLX5_WQE_CTRL_CQ_UPDATE;
+		ctrl->qpn_ds = htobe32(4 | (mqp->ibv_qp->qp_num << 8));
+
+		mqp->cur_ctrl = ctrl;
+		struct mlx5_mmo_wqe *mma_wqe = (struct mlx5_mmo_wqe *)mqp->cur_ctrl;
+		mma_wqe->mmo_meta.mmo_control_31_0 = 0;
+		mma_wqe->mmo_meta.local_key = htobe32(mpd->opaque_mr->lkey);
+		mma_wqe->mmo_meta.local_address = htobe64((uint64_t)(uintptr_t)mpd->opaque_buf);
+	}
+}
+
+static inline void mlx5_wr_invcache_direct(struct mlx5dv_qp_ex *mqp_ex,
+		uint32_t lkey, uint64_t addr, size_t length, bool need_writeback)	
+{
+
+	struct mlx5_qp *mqp = mqp_from_mlx5dv_qp_ex(mqp_ex);
+	struct ibv_qp_ex *ibqp = &mqp->verbs_qp.qp_ex;
+
+	uint32_t idx = mqp->sq.cur_post & (mqp->sq.wqe_cnt - 1);
+
+	mqp->sq.wrid[idx] = ibqp->wr_id;
+	mqp->sq.wqe_head[idx] = mqp->sq.head + mqp->nreq;
+	mqp->sq.wr_data[idx] = IBV_WC_DRIVER3;
+
+	struct mlx5_wqe_ctrl_seg *ctrl = mlx5_get_send_wqe(mqp, idx);
+
+	if (need_writeback) {
+		ctrl->imm |= htobe32(1);
+	}
+	ctrl->opmod_idx_opcode = htobe32(((mqp->sq.cur_post & 0xffff) << 8) |
+		MLX5_OPCODE_MMO);
+	ctrl->opmod_idx_opcode = htobe32((be32toh(ctrl->opmod_idx_opcode) & 0xffffff) |
+		(MLX5_OPC_MOD_MMO_INVCACHE << 24));
+
+	mqp->cur_ctrl = ctrl;
+
+	struct mlx5_mmo_wqe *mma_wqe = (struct mlx5_mmo_wqe *)mqp->cur_ctrl;
+	mlx5dv_set_data_seg(&mma_wqe->src, length, lkey, addr);
+	mlx5dv_set_data_seg(&mma_wqe->dest, length, lkey, addr);
+
+	mqp->sq.cur_post += 1;
+
+	mqp->sq.head += 1;
+
+	/*
+	 * Make sure that descriptors are written before
+	 * updating doorbell record and ringing the doorbell
+	 */
+	// udma_to_device_barrier();
+	mqp->db[MLX5_SND_DBR] = htobe32(mqp->sq.cur_post & 0xffff);
+
+	/* Make sure that the doorbell write happens before the memcpy
+	 * to WC memory below
+	 */
+
+	// mmio_wc_start();
+
+	mlx5_bf_copy(mqp->bf->reg + mqp->bf->offset, (void*)mqp->cur_ctrl, 64, mqp);
+
+	/*
+	 * use mmio_flush_writes() to ensure write combining buffers are
+	 * flushed out of the running CPU. This must be carried inside
+	 * the spinlock. Otherwise, there is a potential race. In the
+	 * race, CPU A writes doorbell 1, which is waiting in the WC
+	 * buffer. CPU B writes doorbell 2, and it's write is flushed
+	 * earlier. Since the mmio_flush_writes is CPU local, this will
+	 * result in the HCA seeing doorbell 2, followed by doorbell 1.
+	 * Flush before toggling bf_offset to be latency oriented.
+	 */
+	// mmio_flush_writes();
+	mqp->bf->offset ^= mqp->bf->buf_size;
+}
+
 enum {
 	MLX5_SUPPORTED_SEND_OPS_FLAGS_RC =
 		IBV_QP_EX_WITH_SEND |
@@ -3740,6 +3827,8 @@ int mlx5_qp_fill_wr_pfns(struct mlx5_qp *mqp,
 			// edited by cxz
 			dv_qp->wr_memcpy_direct_init = mlx5_wr_memcpy_direct_init;
 			dv_qp->wr_memcpy_direct = mlx5_wr_memcpy_direct;
+			dv_qp->wr_invcache_direct_init = mlx5_wr_invcache_direct_init;
+			dv_qp->wr_invcache_direct = mlx5_wr_invcache_direct;
 		}
 
 		break;
@@ -3804,6 +3893,8 @@ int mlx5_qp_fill_wr_pfns(struct mlx5_qp *mqp,
 		//edited by cxz
 		dv_qp->wr_memcpy_direct_init = mlx5_wr_memcpy_direct_init;
 		dv_qp->wr_memcpy_direct = mlx5_wr_memcpy_direct;
+		dv_qp->wr_invcache_direct_init = mlx5_wr_invcache_direct_init;
+		dv_qp->wr_invcache_direct = mlx5_wr_invcache_direct;
 		break;
 
 	default:
