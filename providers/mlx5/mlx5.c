@@ -2589,6 +2589,9 @@ bf_done:
 	pthread_mutex_init(&context->reserved_qpns.mutex, NULL);
 	list_head_init(&context->reserved_qpns.blk_list);
 
+	// add by cxz, to display the device info
+	printf("context created, total uar %d, low lat uar %d\n",
+	       context->tot_uuars, context->low_lat_uuars);
 	return 0;
 
 err_free_bf:
