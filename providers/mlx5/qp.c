@@ -3461,7 +3461,7 @@ static inline void mlx5_wr_memcpy_direct_init(struct mlx5dv_qp_ex *mqp_ex) {
 	for (uint32_t idx = 0; idx < mqp->sq.wqe_cnt; idx++) {
 		struct mlx5_wqe_ctrl_seg *ctrl = mlx5_get_send_wqe(mqp, idx);
 		*(uint32_t *)((void *)ctrl + 8) = 0;
-		ctrl->fm_ce_se = mqp->sq_signal_bits | mqp->fm_cache | MLX5_WQE_CTRL_CQ_UPDATE;
+		ctrl->fm_ce_se = mqp->sq_signal_bits | mqp->fm_cache;
 		ctrl->qpn_ds = htobe32(4 | (mqp->ibv_qp->qp_num << 8));
 
 		mqp->cur_ctrl = ctrl;
@@ -3486,6 +3486,10 @@ static inline void mlx5_wr_memcpy_direct(struct mlx5dv_qp_ex *mqp_ex,
 	mqp->sq.wr_data[idx] = IBV_WC_DRIVER3;
 
 	struct mlx5_wqe_ctrl_seg *ctrl = mlx5_get_send_wqe(mqp, idx);
+
+	if (ibqp->wr_flags & IBV_SEND_SIGNALED) {
+		ctrl->fm_ce_se |= MLX5_WQE_CTRL_CQ_UPDATE;
+	}
 
 	ctrl->opmod_idx_opcode = htobe32(((mqp->sq.cur_post & 0xffff) << 8) |
 		MLX5_OPCODE_MMO);
@@ -3583,7 +3587,7 @@ static inline void mlx5_wr_invcache_direct_init(struct mlx5dv_qp_ex *mqp_ex)
 	for (uint32_t idx = 0; idx < mqp->sq.wqe_cnt; idx++) {
 		struct mlx5_wqe_ctrl_seg *ctrl = mlx5_get_send_wqe(mqp, idx);
 		*(uint32_t *)((void *)ctrl + 8) = 0;
-		ctrl->fm_ce_se = mqp->sq_signal_bits | mqp->fm_cache | MLX5_WQE_CTRL_CQ_UPDATE;
+		ctrl->fm_ce_se = mqp->sq_signal_bits | mqp->fm_cache;
 		ctrl->qpn_ds = htobe32(4 | (mqp->ibv_qp->qp_num << 8));
 
 		mqp->cur_ctrl = ctrl;
@@ -3612,6 +3616,11 @@ static inline void mlx5_wr_invcache_direct(struct mlx5dv_qp_ex *mqp_ex,
 	if (need_writeback) {
 		ctrl->imm |= htobe32(1);
 	}
+
+	if (ibqp->wr_flags & IBV_SEND_SIGNALED) {
+		ctrl->fm_ce_se |= MLX5_WQE_CTRL_CQ_UPDATE;
+	}
+
 	ctrl->opmod_idx_opcode = htobe32(((mqp->sq.cur_post & 0xffff) << 8) |
 		MLX5_OPCODE_MMO);
 	ctrl->opmod_idx_opcode = htobe32((be32toh(ctrl->opmod_idx_opcode) & 0xffffff) |
