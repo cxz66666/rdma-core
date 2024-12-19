@@ -3664,6 +3664,57 @@ static inline void mlx5_wr_invcache_direct(struct mlx5dv_qp_ex *mqp_ex,
 	// mmio_flush_writes();
 	mqp->bf->offset ^= mqp->bf->buf_size;
 }
+static inline void mlx5_wr_invcache_direct_prefill(struct mlx5dv_qp_ex *mqp_ex,
+		uint32_t lkey, uint64_t addr, size_t length, bool need_writeback)	
+{
+
+	struct mlx5_qp *mqp = mqp_from_mlx5dv_qp_ex(mqp_ex);
+	struct ibv_qp_ex *ibqp = &mqp->verbs_qp.qp_ex;
+
+	uint32_t idx = mqp->sq.cur_post & (mqp->sq.wqe_cnt - 1);
+
+	mqp->sq.wrid[idx] = ibqp->wr_id;
+	mqp->sq.wqe_head[idx] = mqp->sq.head + mqp->nreq;
+	mqp->sq.wr_data[idx] = IBV_WC_DRIVER3;
+
+	struct mlx5_wqe_ctrl_seg *ctrl = mlx5_get_send_wqe(mqp, idx);
+
+	if (need_writeback) {
+		ctrl->imm |= htobe32(1);
+	}
+
+	if (ibqp->wr_flags & IBV_SEND_SIGNALED) {
+		ctrl->fm_ce_se |= MLX5_WQE_CTRL_CQ_UPDATE;
+	}
+
+	ctrl->opmod_idx_opcode = htobe32(((mqp->sq.cur_post & 0xffff) << 8) |
+		MLX5_OPCODE_MMO);
+	ctrl->opmod_idx_opcode = htobe32((be32toh(ctrl->opmod_idx_opcode) & 0xffffff) |
+		(MLX5_OPC_MOD_MMO_INVCACHE << 24));
+
+	mqp->cur_ctrl = ctrl;
+
+	struct mlx5_mmo_wqe *mma_wqe = (struct mlx5_mmo_wqe *)mqp->cur_ctrl;
+	mlx5dv_set_data_seg(&mma_wqe->src, length, lkey, addr);
+	mlx5dv_set_data_seg(&mma_wqe->dest, length, lkey, addr);
+
+	mqp->sq.cur_post += 1;
+
+	mqp->sq.head += 1;
+	// don't ring the doorbell
+	mqp->db[MLX5_SND_DBR] = htobe32(mqp->sq.cur_post & 0xffff);
+}
+
+static inline void mlx5_wr_invcache_direct_flush(struct mlx5dv_qp_ex *mqp_ex, unsigned int begin_index, unsigned int count) {
+	struct mlx5_qp *mqp = mqp_from_mlx5dv_qp_ex(mqp_ex);
+	uint32_t idx;
+
+	for (idx = begin_index; idx < begin_index + count; idx++) {
+		idx &= mqp->sq.wqe_cnt - 1;
+		mlx5_bf_copy(mqp->bf->reg + mqp->bf->offset, (void *)mlx5_get_send_wqe(mqp, idx), 64, mqp);
+		mqp->bf->offset ^= mqp->bf->buf_size;
+	}
+}
 
 enum {
 	MLX5_SUPPORTED_SEND_OPS_FLAGS_RC =
@@ -3838,6 +3889,8 @@ int mlx5_qp_fill_wr_pfns(struct mlx5_qp *mqp,
 			dv_qp->wr_memcpy_direct = mlx5_wr_memcpy_direct;
 			dv_qp->wr_invcache_direct_init = mlx5_wr_invcache_direct_init;
 			dv_qp->wr_invcache_direct = mlx5_wr_invcache_direct;
+			dv_qp->wr_invcache_direct_prefill = mlx5_wr_invcache_direct_prefill;
+			dv_qp->wr_invcache_direct_flush = mlx5_wr_invcache_direct_flush;
 		}
 
 		break;

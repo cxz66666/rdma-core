@@ -516,6 +516,9 @@ struct mlx5dv_qp_ex {
 	void (*wr_invcache_direct)(struct mlx5dv_qp_ex *mqp_ex,
 		uint32_t lkey, uint64_t addr, size_t length,
 		bool need_writeback);
+	void (*wr_invcache_direct_prefill)(struct mlx5dv_qp_ex *mqp_ex,
+		uint32_t lkey, uint64_t addr, size_t length, bool need_writeback);
+	void (*wr_invcache_direct_flush)(struct mlx5dv_qp_ex *mqp_ex, unsigned int begin_index, unsigned int count);
 };
 
 struct mlx5dv_qp_ex *mlx5dv_qp_ex_from_ibv_qp_ex(struct ibv_qp_ex *qp);
