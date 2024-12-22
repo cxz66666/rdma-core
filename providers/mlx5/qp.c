@@ -3488,7 +3488,9 @@ static inline void mlx5_wr_memcpy_direct(struct mlx5dv_qp_ex *mqp_ex,
 	struct mlx5_wqe_ctrl_seg *ctrl = mlx5_get_send_wqe(mqp, idx);
 
 	if (ibqp->wr_flags & IBV_SEND_SIGNALED) {
-		ctrl->fm_ce_se |= MLX5_WQE_CTRL_CQ_UPDATE;
+		ctrl->fm_ce_se = mqp->sq_signal_bits | mqp->fm_cache | MLX5_WQE_CTRL_CQ_UPDATE;
+	} else {
+		ctrl->fm_ce_se = mqp->sq_signal_bits | mqp->fm_cache;
 	}
 
 	ctrl->opmod_idx_opcode = htobe32(((mqp->sq.cur_post & 0xffff) << 8) |
@@ -3618,7 +3620,9 @@ static inline void mlx5_wr_invcache_direct(struct mlx5dv_qp_ex *mqp_ex,
 	}
 
 	if (ibqp->wr_flags & IBV_SEND_SIGNALED) {
-		ctrl->fm_ce_se |= MLX5_WQE_CTRL_CQ_UPDATE;
+		ctrl->fm_ce_se = mqp->sq_signal_bits | mqp->fm_cache | MLX5_WQE_CTRL_CQ_UPDATE;
+	} else {
+		ctrl->fm_ce_se = mqp->sq_signal_bits | mqp->fm_cache;
 	}
 
 	ctrl->opmod_idx_opcode = htobe32(((mqp->sq.cur_post & 0xffff) << 8) |
