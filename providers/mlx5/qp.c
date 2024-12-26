@@ -3682,7 +3682,7 @@ static inline void mlx5_wr_invcache_direct_prefill(struct mlx5dv_qp_ex *mqp_ex,
 	uint32_t idx = mqp->sq.cur_post & (mqp->sq.wqe_cnt - 1);
 
 	mqp->sq.wrid[idx] = ibqp->wr_id;
-	mqp->sq.wqe_head[idx] = mqp->sq.head;
+	mqp->sq.wqe_head[idx] = mqp->sq.cur_post;
 	mqp->sq.wr_data[idx] = IBV_WC_DRIVER3;
 
 	struct mlx5_wqe_ctrl_seg *ctrl = mlx5_get_send_wqe(mqp, idx);
@@ -3711,10 +3711,6 @@ static inline void mlx5_wr_invcache_direct_prefill(struct mlx5dv_qp_ex *mqp_ex,
 	mlx5dv_set_data_seg(&mma_wqe->dest, length, lkey, addr);
 
 	mqp->sq.cur_post += 1;
-
-	mqp->sq.head += 1;
-	// don't ring the doorbell
-	mqp->db[MLX5_SND_DBR] = htobe32(mqp->sq.cur_post & 0xffff);
 }
 
 static inline void mlx5_wr_invcache_direct_flush(struct mlx5dv_qp_ex *mqp_ex, unsigned int begin_index, unsigned int count) {
@@ -3727,6 +3723,10 @@ static inline void mlx5_wr_invcache_direct_flush(struct mlx5dv_qp_ex *mqp_ex, un
 		mlx5_bf_copy(mqp->bf->reg + mqp->bf->offset, (void *)mlx5_get_send_wqe(mqp, wqe_idx), 64, mqp);
 		mqp->bf->offset ^= mqp->bf->buf_size;
 	}
+
+	mqp->sq.head += count;
+	// don't ring the doorbell
+	mqp->db[MLX5_SND_DBR] = htobe32(mqp->sq.head & 0xffff);
 }
 
 enum {
