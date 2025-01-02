@@ -1015,9 +1015,9 @@ static inline int poll_cq(struct ibv_cq *ibcq, int ne,
 			mlx5_stall_poll_cq();
 		}
 	}
-
+#if defined(__x86_64__)
 	mlx5_spin_lock(&cq->lock);
-
+#endif
 	for (npolled = 0; npolled < ne; ++npolled) {
 		err = mlx5_poll_one(cq, &rsc, &srq, wc + npolled, cqe_ver);
 		if (err != CQ_OK)
@@ -1025,8 +1025,9 @@ static inline int poll_cq(struct ibv_cq *ibcq, int ne,
 	}
 
 	update_cons_index(cq);
-
+#if defined(__x86_64__)
 	mlx5_spin_unlock(&cq->lock);
+#endif	
 
 	if (cq->stall_enable) {
 		if (cq->stall_adaptive_enable) {

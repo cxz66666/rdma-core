@@ -826,8 +826,9 @@ static inline int _mlx5_post_send(struct ibv_qp *ibqp, struct ibv_send_wr *wr,
 	uint32_t max_tso = 0;
 	FILE *fp = to_mctx(ibqp->context)->dbg_fp; /* The compiler ignores in non-debug mode */
 
+#if defined(__x86_64__)
 	mlx5_spin_lock(&qp->sq.lock);
-
+#endif
 	next_fence = qp->fm_cache;
 
 	for (nreq = 0; wr; ++nreq, wr = wr->next) {
@@ -1150,8 +1151,9 @@ out:
 	qp->fm_cache = next_fence;
 	post_send_db(qp, bf, nreq, inl, size, ctrl);
 
+#if defined(__x86_64__)
 	mlx5_spin_unlock(&qp->sq.lock);
-
+#endif
 	return err;
 }
 
@@ -4057,8 +4059,9 @@ int mlx5_post_wq_recv(struct ibv_wq *ibwq, struct ibv_recv_wr *wr,
 	int i, j;
 	struct mlx5_rwqe_sig *sig;
 
+#if defined(__x86_64__)
 	mlx5_spin_lock(&rwq->rq.lock);
-
+#endif
 	ind = rwq->rq.head & (rwq->rq.wqe_cnt - 1);
 
 	for (nreq = 0; wr; ++nreq, wr = wr->next) {
@@ -4114,8 +4117,9 @@ out:
 		*(rwq->recv_db) = htobe32(rwq->rq.head & 0xffff);
 	}
 
+#if defined(__x86_64__)
 	mlx5_spin_unlock(&rwq->rq.lock);
-
+#endif
 	return err;
 }
 
@@ -4184,8 +4188,9 @@ out:
 		 * Make sure that descriptors are written before
 		 * doorbell record.
 		 */
+#if defined(__x86_64__)
 		udma_to_device_barrier();
-
+#endif
 		/*
 		 * For Raw Packet QP, avoid updating the doorbell record
 		 * as long as the QP isn't in RTR state, to avoid receiving
